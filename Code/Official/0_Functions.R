@@ -1,29 +1,36 @@
-#This is going to replace SpatialFunctions.R on the other machine.
+##Author: Jens Stevens; stevensjt@gmail.com
+##Purpose: Define a series of spatial processing functions that are the workhorses for simplifying
+#and simultaing high severity patch layers.
+
+
 donut_holes_and_crumbs <- function(hs_fire){
-  #plot(hs_fire$geometry, col = "darkred") #Plot whole fire
-  #plot(hs_fire$geometry[51], col="darksalmon") #Polygon 51 is the second-largest
+  #This function takes a vector layer of high-severity patches and 
+  #1) fills holes <= 1ha, and 2) drops crumbs (small patches) <= 1ha
+  
+  #1) fill holes
+  #plot(hs_fire$geometry, col = "darksalmon") #option to plot
   hs_fire$geometry = #fill holes <= 10,000 m2 = 1ha, minimum holesize retained is 10,001 m2
     smoothr::fill_holes(hs_fire$geometry, threshold = 10000) #Takes ~25 seconds
   hs_fire$Area_m2 <- #Re-Calculate area of each patch after filling holes; assumes metric
     st_area(hs_fire)
   hs_fire$Area_ha <- #Calculate area in ha of each patch
     as.vector(hs_fire$Area_m2)*0.0001
+  #plot(hs_fire$geometry, col = "darksalmon") #option to plot
   
-  
+  #2) drop crumbs
   hs2 = #drop crumbs <= 10,000 m2 = 1ha, minimum crumb size retained is 10,001 m2
     #hs2 is second temporary object holding high severity polygons
     #need to create new object here because "drop_crumbs" changes the object length
-    #drop_crumbs(hs_fire,threshold = 10000) #Takes ~40 seconds; deprecated as below is faster
     hs_fire[hs_fire$Area_ha > 1,]
-  #Number of discrete patches drops from 2948 to 607 for Las Conchas RdNBR; 555 for LCDC
-  #plot(hs2$geometry, col = "darkred") #Plot whole fire
-  #rm(hs2) #Clean up working environment
+  #plot(hs2$geometry, col = "darkred") #option to plot
+  
 
   #return the polygons with holes filled and crumbs deleted, in decreasing size order
-  hs2[order(hs2$Area_ha, decreasing = TRUE),]  #maybe deprecated because order is changed later?
+  hs2[order(hs2$Area_ha, decreasing = TRUE),]
 }
 
 test_chunks <- function(pol, sdist){
+  #
   bparts = #if the value of sdist severs pinch points, bparts is a sfc_MULTIPOLYGON, 
     #bparts[[1]][[1]] is a list of coords for the first pinched polygon, which may or may not have holes
     #but bparts[[1]][[1]] is NOT an sfc_POLYGON, it is *just* a list.
@@ -42,8 +49,11 @@ test_chunks <- function(pol, sdist){
 }
 
 lungs <- function(pol, sdist){
-  #pol = hs3$geometry[l]
-  #sdist = -15
+  #This function operates on a single polygon. It looks for narrow pinch points less than sdist (in meters)
+  #If does this by "inhaling" (STEP 1) and seeing if that creates multiple polygons
+  #If multiple polygons are created, STEP 2 "exhales", 
+  #and the difference between the inhale and the exhale is used to identify where to split the polygon.
+  
   output = list() #object to store output
   
   ##STEP 1: Inward Buffer ("Inhale")

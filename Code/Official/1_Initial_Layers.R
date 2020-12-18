@@ -1,5 +1,6 @@
 ##Author: Jens Stevens; stevensjt@gmail.com
 ##Purpose: Process Sean Parks CBI_bc layers, into thresholded high-severity pixels CBI >= 225, then into polygons.
+##Complete as of 12/10/20, don't need to run again.
 
 ####0. Read Libraries and Import Data####
 library(sf)
