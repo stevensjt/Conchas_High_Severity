@@ -12,9 +12,9 @@ library(ggplot2) #version 3.2.1 for ggplot()
 source("./Code/Official/0_Functions.R") #read in customized functions necessary for processing.
 
 hs_fire <- #read raw high severity patch layer in sf format for one of three scenarios
-  read_sf("./SpatialInput/4.Spatial_Scenarios", layer="lc_raw") #Scenario 1: Las Conchas
-#read_sf("./SpatialInput/4.Spatial_Scenarios", layer="all_raw")
-#read_sf("./SpatialInput/4.Spatial_Scenarios", layer="treeless_raw") #Skip to intermediate step in #2
+  #read_sf("./SpatialInput/4.Spatial_Scenarios", layer="lc_raw") #Scenario 1: Las Conchas
+  read_sf("./SpatialInput/4.Spatial_Scenarios", layer="all_raw")
+  #read_sf("./SpatialInput/4.Spatial_Scenarios", layer="treeless_raw") #Skip to intermediate step in #2
 
 ####Step 1: Process high severity patch layer and fill holes, to prepare for cutting####
 hs_fire <- #Set as singlepart (one row per polygon, each polygon has a "single part"); suppress warning about applying attributes
@@ -58,10 +58,10 @@ Sys.time()
 
 #If working with Las Conchas - Dome - Cerro[grande] RdNBR layer (LCDC):
 Sys.time()
-LCDC_large_clean <- #Conduct splits via "breath increments" and "lungs" functions. SLOW.
+all_clean_cut <- #Conduct splits via "breath increments" and "lungs" functions. SLOW.
   breath_increments(hs_pinch,increments = c(-15, -30, -60, -120))
-LCDC_large_clean_full <- #Combine small unsplit polygons (hs_fill_small) with larger split polygons
-  rbind(LCDC_large_clean, hs_fill_small)
+all_clean_cut_full <- #Combine small unsplit polygons (hs_fill_small) with larger split polygons
+  rbind(all_clean_cut, hs_fill_small)
 Sys.time()
 
 #If working with Las Conchas Treeless layer:
@@ -80,5 +80,5 @@ Sys.time()
 
 #Option to write products to file
 #st_write(lc_clean_cut_full, "./SpatialOutput/lc_clean_cut.shp",delete_layer=T)
-#st_write(LCDC_large_clean_full, "./SpatialOutput/all_clean_cut.shp",delete_layer=T)
+#st_write(all_clean_cut_full, "./SpatialOutput/all_clean_cut.shp",delete_layer=T)
 #st_write(LasConchasTreeless_clean_full, "./SpatialOutput/LasConchas_Treeless_Clean.shp",delete_layer=T)
