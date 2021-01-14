@@ -5,24 +5,24 @@
 
 donut_holes_and_crumbs <- function(hs_fire){
   #This function takes a vector layer of high-severity patches and 
-  #1) fills holes <= 1ha, and 2) drops crumbs (small patches) <= 1ha
+  #1) 2) drops crumbs (small patches) <= 1ha, and fills holes <= 1ha
   
-  #1) fill holes
-  #plot(hs_fire$geometry, col = "darksalmon") #option to plot
-  hs_fire$geometry = #fill holes <= 10,000 m2 = 1ha, minimum holesize retained is 10,001 m2
-    smoothr::fill_holes(hs_fire$geometry, threshold = 10000) #Takes ~25 seconds
-  hs_fire$Area_m2 <- #Re-Calculate area of each patch after filling holes; assumes metric
-    st_area(hs_fire)
-  hs_fire$Area_ha <- #Calculate area in ha of each patch
-    as.vector(hs_fire$Area_m2)*0.0001
-  #plot(hs_fire$geometry, col = "darksalmon") #option to plot
-  
-  #2) drop crumbs
+  #1) drop crumbs
   hs2 = #drop crumbs <= 10,000 m2 = 1ha, minimum crumb size retained is 10,001 m2
     #hs2 is second temporary object holding high severity polygons
     #need to create new object here because "drop_crumbs" changes the object length
     hs_fire[hs_fire$Area_ha > 1,]
   #plot(hs2$geometry, col = "darkred") #option to plot
+  
+  #2) fill holes
+  #plot(hs2$geometry, col = "darksalmon") #option to plot
+  hs2$geometry = #fill holes <= 10,000 m2 = 1ha, minimum holesize retained is 10,001 m2
+    smoothr::fill_holes(hs2$geometry, threshold = 10000) #Takes ~25 seconds
+  hs2$Area_m2 <- #Re-Calculate area of each patch after filling holes; assumes metric
+    st_area(hs2)
+  hs2$Area_ha <- #Calculate area in ha of each patch
+    as.vector(hs2$Area_m2)*0.0001
+  #plot(hs2$geometry, col = "darksalmon") #option to plot
   
 
   #return the polygons with holes filled and crumbs deleted, in decreasing size order
@@ -149,7 +149,7 @@ breath_increments <- function(hs, increments, to_plot = FALSE){
         if(to_plot){
           plot(splitpol2, col = rainbow(8), main = oldname)
         }
-        print(paste("cut geometries for original polygon", oldname, "row", l, "by", sdist)) #optional counter
+        #print(paste("cut geometries for original polygon", oldname, "row", l, "by", sdist)) #optional counter
         hs$RemoveLater[l] = 1 #Flag the split polygon (row l) for removal
         if(length(splitpol2)>2){
           #This is a failsafe if a split happened to produce 3 polygons instead of 2. Not the most elegant.
@@ -182,39 +182,37 @@ breath_increments <- function(hs, increments, to_plot = FALSE){
   hs
 }
 
-random_cheese_patchdist <- function(pct,nugget,magvar,pct_hs){
-  rng <- round(sqrt(((pct/100) * xmax * ymax)/pi), 0)
-  
-  # Alternatively, set the variogram range in number of cells
-  # rng <- 20
-  
+random_cheese_patchdist <- function(pct,nugget,magvar,prop_hs){
+  #This function generates one random patch layer for a given set of variogram parameters
+  test_prop_hs <- FALSE
+  while(!test_prop_hs){
+  rng <- #set the variogram range as the radius of a circle with an area equal to 'pct' percent of the grid area
+    round(sqrt(((pct/100) * xmax * ymax)/pi), 0) #define rng based on pct
   # Generate a continuous Gaussian random field based on the variogram input parameters
   gf <- #Slow, ~20 seconds w 30 m resolution
     nlm_gaussianfield(ncol = xmax, nrow = ymax, autocorr_range = rng, mag_var = magvar, nug = nugget)
-  
   #Reproject the random grid to be on the same CRS as Las Conchas perimeter.
   extent(gf) <- round(extent(perim),0)
-  gf@crs <- perim_sp@proj4string
-  gf <- projectRaster(gf, crs = crs(perim))
-  
-  #### Convert the continuous Gaussian field into a binary grid ###
-  # Function to convert continuous Gaussian random field to binary data
-  # The binary grid will have Values of 1 = burned and 0 = unburned
-  convert.to.binary <- function(x) 
-  {
-    ifelse(x <  cutoff, 0, 1)
-  }
-  
-  prop.burned = pct_hs
-  
+  gf@crs <- crs(perim)
+  #gf <- projectRaster(gf, crs = crs(perim)) #deprecated?
+  # Convert the continuous Gaussian field into a binary grid
+  convert.to.binary <- function(x) { ifelse(x <  cutoff, 0, 1) }
   # convert grid to a vector and sort in decreasing order to find a cutoff point where the proportion of cells with values 
-  # above the cutoff point is equal to 'prop.burned'
+  # above the cutoff point is equal to 'prop_hs'
   gfv <- sort(as.vector(gf), decreasing = TRUE) #gfv = gaussian field vector; length = n cells in grid
-  cutoff <- #prop.burned percent cells of total grid, everything larger is burned (when sorted by descending value)
-    gfv[length(gfv) * prop.burned] 
+  cutoff <- #prop_hs percent cells of total grid, everything larger is high severity (when sorted by descending value)
+    gfv[length(gfv) * prop_hs] 
   gf.binary <- calc(gf, fun = convert.to.binary)
-  gf.binary1 <- mask(gf.binary,perim)
+  gf.binary1 <- mask(gf.binary, perim)
   gf.binary1[gf.binary != 1] <- NA
+  area_sim <- # number of cells = 1, times area of a cell 900.5704 m2 
+    freq(gf.binary1, value = 1) * 900.5704
+  prop_hs_sim <- as.vector(round(area_sim/st_area(perim),3)[[1]])
+  test_prop_hs <- abs( prop_hs_sim - prop_hs ) < 0.03
+  if(!test_prop_hs){  print(paste(Sys.time()," bad sim"))}
+  } #kicks out of this loop when the clipped simulation is within 3% of the target prop_hs
+  
+  print(paste(Sys.time()," good sime"))
   writeRaster(gf.binary1,"./SpatialOutput/sim.tif", overwrite = TRUE)
   
   #Polygonize using "stars" from https://cran.r-project.org/web/packages/stars/vignettes/stars5.html
@@ -226,29 +224,38 @@ random_cheese_patchdist <- function(pct,nugget,magvar,pct_hs){
     st_area(hs_fire)
   hs_fire$Area_ha <- #Calculate area in ha of each patch
     as.vector(hs_fire$Area_m2)*0.0001
+  print(paste(Sys.time()," starting donut holes and crumbs"))
   hs_fill <- #Fill holes <= 1 ha; delete crumbs <= 1 ha.
     donut_holes_and_crumbs(hs_fire)
+  print(paste(Sys.time()," finished donut holes and crumbs"))
+  hs_fill$Area_m2 <- #Re-calculate area of each patch after deleting holes and crumbs
+    st_area(hs_fill)
+  hs_fill$Area_ha <- #Re-calculate area in ha of each patch
+    as.vector(hs_fill$Area_m2)*0.0001
   hs_fill$PatchName <-
     seq(1:nrow(hs_fill))
   hs_fill$RemoveLater <- NA #Placeholder for patches that are eventually split and need to be removed.
+  
   hs_pinch <- #drop crumbs <= 1,000,000 m2 = 100ha, minimum crumb size retained is 10,001 m2
     #here we are looking at which large (>100 ha) polygons have pinch points that we can chop up
     hs_fill[hs_fill$Area_ha > 100,]
   hs_fill_small <- #Store the polygons <= 100 ha, for subsequent re-integration
     hs_fill[hs_fill$Area_ha <= 100,]
   
-  print(Sys.time())
+  print(paste(Sys.time(), "starting breath increments"))
   sim_clean <- #Conduct splits via "breath increments" and "lungs" functions. SLOW.
     breath_increments(hs_pinch,increments = c(-15, -30, -60, -120))
   sim_clean_full <- #Combine small unsplit polygons (hs_fill_small) with larger split polygons
     rbind(sim_clean, hs_fill_small)
   print(Sys.time()); print(paste("finished sim ", s))
   
-  sim_clean_full$Area_ha #return the vector of patch size values
+  #sim_clean_full$Area_ha #return the vector of patch size values
+  sim_clean_full #option to return the polygon
   
 }
 
 random_cheese_spatial <- function(pct,nugget,magvar,pct_hs){
+  #This is the same as sim_cheese_pachdist but returns the polygon instead of the vector. Eventually deprecate.
   rng <- round(sqrt(((pct/100) * xmax * ymax)/pi), 0)
   
   # Alternatively, set the variogram range in number of cells
@@ -312,4 +319,4 @@ random_cheese_spatial <- function(pct,nugget,magvar,pct_hs){
   
   sim_clean_full #return the vector of patch size values ONLY CHANGE from similar function above; should adjust that one.
   
-}
+}#Deprecate

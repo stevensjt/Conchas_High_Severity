@@ -5,14 +5,14 @@ library(NLMR)
 library(stars)
 #This will replace Random Cheese
 
-####1. Read in the three observed layers
-lc <- read_sf("./SpatialOutput/", layer = "LasConchas_643_RdNBR_Clean")
-lcdc <- read_sf("./SpatialOutput/", layer = "LasConchas_Dome_Cerro_643_RdNBR_Clean")
-treeless <- read_sf("./SpatialOutput/", layer = "LasConchas_Treeless_Clean")
+####1. Read in the three observed layers####
+lc <- read_sf("./SpatialOutput/", layer = "lc_clean_cut")
+#lcdc <- read_sf("./SpatialOutput/", layer = "LasConchas_Dome_Cerro_643_RdNBR_Clean")
+#treeless <- read_sf("./SpatialOutput/", layer = "LasConchas_Treeless_Clean")
 perim <- read_sf("../../../GIS/Fires/Las Conchas/Perimeter/", layer="Las_Conchas_Perim")
-perim_sp <- readOGR("../../../GIS/Fires/Las Conchas/Perimeter/", layer="Las_Conchas_Perim")
+#perim_sp <- readOGR("../../../GIS/Fires/Las Conchas/Perimeter/", layer="Las_Conchas_Perim")
 scars <- read_sf("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fs_in_las_conchas")
-scars_sp <- readOGR("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fs_in_las_conchas")
+#scars_sp <- readOGR("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fs_in_las_conchas")
 
 #CHECKME need to run stats, can pull from Random Cheese
 #sum(st_area(lc))/st_area(perim)
