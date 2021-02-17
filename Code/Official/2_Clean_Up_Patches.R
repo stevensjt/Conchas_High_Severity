@@ -39,6 +39,9 @@ ggplot(hs_fill, aes(x = Area_ha)) +
   scale_x_log10(breaks = c(1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192)) + 
   theme(axis.text.x = element_text(angle = 45, size = 14))
 
+####Step 1 modified: Process high severity patch layer as raster - remove crumbs and hoes - and prepare for cutting####
+
+
 ####2. split polygon chunks separated by narrow bridges####
 hs_pinch <- #temporarily drop crumbs <= 1,000,000 m2 = 100ha, minimum crumb size retained is 10,001 m2
   #here we are only looking to chop up large (>100 ha) polygons
