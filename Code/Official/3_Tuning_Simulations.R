@@ -16,8 +16,9 @@ library(ggpubr)
 library(viridisLite) #version 0.3.0 for magma()
 
 ####1. Read Data####
-lc <- read_sf("./SpatialOutput/", layer = "lc_clean_cut") #"Las Conchas" only sim
-lc <- read_sf("./SpatialOutput/", layer = "lc_clean_cut")
+#lc <- read_sf("./SpatialOutput/", layer = "lc_clean_cut") #"Las Conchas" only sim
+#lc <- read_sf("./SpatialOutput/", layer = "all_clean_cut") #"all fires" sim
+lc <- read_sf("./SpatialOutput/", layer = "treeless_clean_cut") #"treeless" sim
 #lc_raw <- read_sf("./SpatialInput/4.Spatial_Scenarios/", layer = "lc_raw")
 perim <- read_sf("../../../GIS/Fires/Las Conchas/Perimeter/", layer="Las_Conchas_Perim")
 #perim_sp <- readOGR("../../../GIS/Fires/Las Conchas/Perimeter/", layer="Las_Conchas_Perim") #Need to access projection. deprecated?
@@ -43,13 +44,20 @@ sims_list_spatial <- list()
 df_list <- list()
 
 #So far best combo for Las Conchas is 0.25/5/50
-#Best combo with the cutoffs method is 0.5/0/10
-pct <- 0.6
-nugget <- 0.6
+#Best "lc" combo with the cutoffs method is 0.6/0.6/10, USING THIS ONE FOR SUBMISSION
+#Best "all" combo with the cutoffs method is 0.6/0.6/10, USING THIS ONE FOR SUBMISSION
+#Best "treeless" combo with the cutoffs method is 
+pct <- 7
+nugget <- 0.3
 magvar <- 10
 #cutoffs: If nugget >0, set cutoff #2 to ~10% over the minimum needed
-#0.354/0.5/0/10: c(0.01, 0.12, 0.75)
-cutoffs <- c(0.01,0.14,0.75) #needs to be defined outside of function below to work properly.
+#0.354/0.6/0.6/10: c(0.01, 0.14, 0.75)
+#0.428/0.6/0.6/10: c(0.01, 0.18, 0.71)
+#0.655/0.6/0.6/10: c(0.1, 0.18,0.50) 
+#0.655/1,5/0/10: c(0.2, 0.18,0.50) 
+#0.655/7/1/10: c(0.1, 0.19,0.50) 
+#0.655/7/0.2,0.3/10: c(0.2, 0.18,0.50) 
+cutoffs <- c(0.02,0.18,0.50) #needs to be defined outside of function below to work properly.
 parms_text <- paste0("pct_", pct,"_nug_",nugget,"_mv_",magvar)
 
 #Run one to check it out
@@ -81,20 +89,20 @@ for(s in c(1:10)){
   
 }
 df_list[[parms_text]] <- df_compare
-write_csv(df_compare,paste0("./Output/Tuning_Sims/Beta6/",parms_text,".csv"))
-write_rds(sims_list_spatial,paste0("./Output/Tuning_Sims/Beta6/",parms_text,".rds"))
+write_csv(df_compare,paste0("./Output/Tuning_Sims/treeless/Theta1/",parms_text,".csv"))
+write_rds(sims_list_spatial,paste0("./Output/Tuning_Sims/treeless/Theta1/",parms_text,".rds"))
 
 ####4. Dataframe mods and plotting####
 
 csv_list <-  
-  dir("./Output/Tuning_Sims/Beta6/") [grep("csv", dir("./Output/Tuning_Sims/Beta6/"))]
+  dir("./Output/Tuning_Sims/treeless/Theta1/") [grep("csv", dir("./Output/Tuning_Sims/treeless/Theta1/"))]
 parms_list <- sub("\\.c.*", "", csv_list)
 
 for(parms_text in parms_list){
 #if doing manually: 
-#parms_text <- parms_list[9]
-df_compare <- read.csv(paste0("./Output/Tuning_Sims/Beta6/", parms_text, ".csv"))
-sims_list_spatial <- read_rds(paste0("./Output/Tuning_Sims/Beta6/", parms_text, ".rds"))
+#parms_text <- parms_list[4]
+df_compare <- read.csv(paste0("./Output/Tuning_Sims/treeless/Theta1/", parms_text, ".csv"))
+sims_list_spatial <- read_rds(paste0("./Output/Tuning_Sims/treeless/Theta1/", parms_text, ".rds"))
 
 df_compare$bin <- ceiling(log2(df_compare$Area_ha))
 
@@ -171,7 +179,7 @@ final <-
   ) 
   ) #There is an occasional error in plot generation; tryCatch just means "keep trying till it works"
 
-png(paste0("./Output/Tuning_Sims/Beta6/Figures/",parms_text,".png"), height = 12, width = 8, units = "in", res = 300)
+png(paste0("./Output/Tuning_Sims/treeless/Theta1/Figures/",parms_text,".png"), height = 12, width = 8, units = "in", res = 300)
 print({
   tryCatch(
 

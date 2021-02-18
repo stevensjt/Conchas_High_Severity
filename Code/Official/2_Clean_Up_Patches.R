@@ -13,8 +13,8 @@ source("./Code/Official/0_Functions.R") #read in customized functions necessary 
 
 hs_fire <- #read raw high severity patch layer in sf format for one of three scenarios
   #read_sf("./SpatialInput/4.Spatial_Scenarios", layer="lc_raw") #Scenario 1: Las Conchas
-  read_sf("./SpatialInput/4.Spatial_Scenarios", layer="all_raw")
-  #read_sf("./SpatialInput/4.Spatial_Scenarios", layer="treeless_raw") #Skip to intermediate step in #2
+  #read_sf("./SpatialInput/4.Spatial_Scenarios", layer="all_raw")
+  read_sf("./SpatialInput/4.Spatial_Scenarios", layer="treeless_raw") #Skip to intermediate step in #2
 
 ####Step 1: Process high severity patch layer and fill holes, to prepare for cutting####
 hs_fire <- #Set as singlepart (one row per polygon, each polygon has a "single part"); suppress warning about applying attributes
@@ -40,7 +40,7 @@ ggplot(hs_fill, aes(x = Area_ha)) +
   theme(axis.text.x = element_text(angle = 45, size = 14))
 
 ####Step 1 modified: Process high severity patch layer as raster - remove crumbs and hoes - and prepare for cutting####
-
+#CHECKME option to do this and save time but not sure what priority is.
 
 ####2. split polygon chunks separated by narrow bridges####
 hs_pinch <- #temporarily drop crumbs <= 1,000,000 m2 = 100ha, minimum crumb size retained is 10,001 m2
@@ -84,4 +84,4 @@ Sys.time()
 #Option to write products to file
 #st_write(lc_clean_cut_full, "./SpatialOutput/lc_clean_cut.shp",delete_layer=T)
 #st_write(all_clean_cut_full, "./SpatialOutput/all_clean_cut.shp",delete_layer=T)
-#st_write(LasConchasTreeless_clean_full, "./SpatialOutput/LasConchas_Treeless_Clean.shp",delete_layer=T)
+#st_write(LasConchasTreeless_clean_full, "./SpatialOutput/treeless_clean_cut.shp",delete_layer=T)

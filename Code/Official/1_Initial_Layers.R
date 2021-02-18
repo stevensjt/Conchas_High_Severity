@@ -25,6 +25,7 @@ cbi.binary <- r #New object to store the binary high severity pixels as "1"
 cbi.binary[r >= 2.25] <- 1 #Set high severity pixels to 1
 cbi.binary[r < 2.25] <- NA #Set other pixels to NA
 #plot(cbi.binary, main = "Las Conchas") #Option to plot high severity fire (raster) and make sure it looks good
+#writeRaster(cbi.binary,"./SpatialInput/4.Spatial_Scenarios/lc_raw.tif") Option to write Las Conchas raster to file
 hs_vector <- cbi.binary %>% #Steps to efficiently convert raster to vector
   st_as_stars() %>% #convert raster to a "stars" 
   st_as_sf(as_points = FALSE, merge = TRUE) %>% #"sf" object is a multipart polygon w/ data frame
@@ -69,6 +70,7 @@ for(f in 1:length(other_hs)){ #takes about 1 minute
   cbi.binary[r >= 2.25] <- 1 #Set high severity pixels to 1
   cbi.binary[r < 2.25] <- NA #Set other pixels to NA
   plot(cbi.binary, main = fire_name) #Option to plot fire and make sure it looks good
+  #CHECKME eventually can add script here to merge these rasters onto the Las Conchas and save the "all" raster to file.
   
  hs_vector <- cbi.binary %>% #Steps to efficiently convert raster to vector
    st_as_stars() %>% #"stars" object is a multipart polygon (?)
