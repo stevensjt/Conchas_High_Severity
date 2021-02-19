@@ -3,16 +3,20 @@
 ####1. Read Data####
 scars <- read_sf("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fs_in_las_conchas")
 clusters <- read_sf("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fire_scar_clusters")
-lc <- read_sf("./SpatialOutput/", layer = "lc_clean_cut")
+lc <- read_sf("./SpatialOutput/", layer = "treeless_clean_cut")
+scenario <- "treeless"
 
 ####2. Iterate simulation of choice####
 #So far best combo for Las Conchas is 0.25/5/50
-pct <- 0.25
-nugget <- 5
-magvar <- 50
-#prop_hs needs to be about 2% higher than observed
+#Update: 0.6/1.6/10 for lc (cutoffs 0.01, 0.14, 0.75) and all (cutoffs 0.01, 0.18, 0.71)
+#7/0.3/10 for treeless (0.02, 0.18, 0.50)
+pct <- 0.6
+nugget <- 0.6
+magvar <- 10
+#cutoffs: 
+cutoffs <- c(0.01,0.14,0.75) #needs to be defined outside of function below to work properly.
 
-parms_text <- paste0("pct_", pct,"_nug_",nugget,"_mv_",magvar)
+parms_text <- paste0(scenario,"_pct_", pct,"_nug_",nugget,"_mv_",magvar)
 
 #Run one to check it out
 #s = 1 #simulation number
@@ -20,18 +24,28 @@ parms_text <- paste0("pct_", pct,"_nug_",nugget,"_mv_",magvar)
 #out = random_cheese_patchdist(pct = pct, nugget = nugget, magvar = magvar, prop_hs = prop_hs)
 #plot(out$geometry,col = out$Area_ha, border = "black", pal = rainbow(50), main = parms_text)
 
-#Run ten and store the results
+#Initialize comparison data frame with observed original patch size distribution (after having filled holes)
+prop_hs <- as.vector(round(sum(st_area(lc))/st_area(perim),3)[[1]])
+df_original <- data.frame(sim = 0, Area_ha = sort(lc$Area_ha, decreasing = T), prop_hs = prop_hs)
+
+#Run one hundred and store the results
+sims_list_spatial <- list()
+df_list <- list()
 df_compare <- df_original
 for(s in c(1:100)){
   gc()
-  out <- random_cheese_patchdist(pct = pct, nugget = nugget, magvar = magvar, prop_hs = prop_hs)
+  print(Sys.time())
+  out <- raster_cheese_patchdist_multipart(pct = pct, nugget = nugget, magvar = magvar, prop_hs = prop_hs, 
+                                           seed = s, cutoffs = cutoffs)
+  #out <- random_cheese_patchdist(pct = pct, nugget = nugget, magvar = magvar, prop_hs = prop_hs)
+  
   
   #Test if the random cookie cutter of the Las Conchas perimeter picked up an accurate proportion of high severity
   area_sim <- sum(st_area(out))
   prop_hs_sim <- as.vector(round(area_sim/st_area(perim),3)[[1]])
-  test_prop_hs <- abs( prop_hs_sim - prop_hs ) < 0.03
-  if(test_prop_hs){#store results if proportion high severity within 3% of true value
-    #double check but this test can probably be deprecated
+  test_prop_hs <- abs( prop_hs_sim - prop_hs ) < 0.01
+  if(test_prop_hs){#store results if proportion high severity within 1% of true value
+    #CHECKME this test can probably be deprecated if runs are producing 100/100 within 1%
     df_out <- data.frame(sim = s, Area_ha = sort(out$Area_ha, decreasing = T), prop_hs = prop_hs_sim) #store patch distribution
     df_compare <- rbind(df_compare, df_out) #add patch distribution to comparison data frame
     sims_list_spatial[[s]] <- out #store spatial layer in list
@@ -42,9 +56,14 @@ for(s in c(1:100)){
 }
 #df_list[[parms_text]] <- df_compare #Deprecated when running for analysis
 write_csv(df_compare,paste0("./Output/Analysis_Ready/",parms_text,".csv"))
-write_rds(sims_list_spatial,paste0("./Output/Analysis_Ready/",parms_text,".rds"))
+write_rds(sims_list_spatial,paste0("./large_files/",parms_text,".rds"))
 
 ####3. Assemble plot data####
+df_compare <- read_csv("./Output/Analysis_Ready/treeless_pct_7_nug_0.3_mv_10.csv")
+sims_list_spatial <- read_rds("./large_files/treeless_pct_7_nug_0.3_mv_10.rds")
+#all_pct_0.6_nug_0.6_mv_10 [same for lc]
+#treeless_pct_7_nug_0.3_mv_10
+
 df_compare$bin <- ceiling(log2(df_compare$Area_ha))
 baseline <- lc
 
@@ -53,7 +72,11 @@ sim_comparison <- df_compare %>%
   summarise(prop_scars = NA, prop_patch_scars = NA, prop_patch_scars_20 = NA,
             prop_clusters = NA, prop_cluster_scars = NA,prop_cluster_scars_20 = NA)
 
-for(s in c(1:100)){
+##CHECKME the premise is wrong here for intersecting the clusters, because a cluster can be intersected by multiple patches which artificially inflates the numbers. To solve this:
+#lc_simple_intersect <- st_make_valid(st_combine(lc)) 
+#below where lc etc are used as second term of st_intersection. Not implemented yet 2/18.
+
+for(s in c(1:100)){ #about 2 minutes (more for treeless)
   sim <- st_make_valid(sims_list_spatial[[s]])
   sim <- sim[order(sim$Area_ha, decreasing = TRUE),]
   sim$sim = s
@@ -78,18 +101,21 @@ for(s in c(1:100)){
 
 #Actual values
 lc <- lc[order(lc$Area_ha, decreasing = TRUE),]
+lc <- st_make_valid(lc) #treeless layer has a self-intersecting problem
 lc$unique_patch_id = c(1:nrow(lc))
 lc_20 <- lc[c(1:20),]
 scar_hits_lc <- st_intersection(scars,lc)
 scar_hits_20_lc <- st_intersection(scars,lc_20)
 patch_scar_hits_lc <- length(unique(scar_hits_lc$unique_patch_id))
 patch_scar_hits_20_lc <- length(unique(scar_hits_20_lc$unique_patch_id))
-cluster_hits_lc <- st_intersection(clusters,lc) #CHECKME for entirely within; this just does partial intersection
+cluster_hits_lc <- st_intersection(clusters,lc) #CHECKME for entirely within; this just does partial intersection and furthermore it does it incorrectly if multiple patches intersect
+cluster_hits_lc2 <- st_intersection(clusters,lc_simple_intersect) 
+#Per Sean suggestion, just pick a tree at random from a cluster first?
 cluster_hits_20_lc <- st_intersection(clusters, lc_20)
 patch_cluster_hits_lc <- length(unique(cluster_hits_lc$unique_patch_id))
 patch_cluster_hits_20_lc <-  length(unique(cluster_hits_20_lc$unique_patch_id))
 
-observed <- data.frame(scenario = "lc")
+observed <- data.frame(scenario = scenario)
 observed$prop_scars_lc <- nrow(scar_hits_lc)/nrow(scars)
 observed$prop_patch_scars_lc <- patch_scar_hits_lc/nrow(lc)
 observed$prop_patch_scars_20_lc <- patch_scar_hits_20_lc/nrow(lc_20)
@@ -97,7 +123,7 @@ observed$prop_clusters_lc <- nrow(cluster_hits_lc)/nrow(clusters)
 observed$prop_patch_clusters_lc <- patch_cluster_hits_lc/nrow(lc)
 observed$prop_patch_clusters_20_lc <- patch_cluster_hits_20_lc/nrow(lc_20)  
 observed$prop_hs <- as.vector(round(sum(st_area(lc))/st_area(perim),3)[[1]])
-observed$observed <- "Las Conchas"
+observed$observed <- "treeless"
 
 ####4. Build plots####
 
@@ -148,7 +174,7 @@ p4 <-
 final <-
     ggarrange(p1, p2, p3, p4, ncol = 2, nrow = 2, labels = c("a","c", "b", "d"))
 
-png(paste0("./Output/Analysis_Ready/final2.png"), height = 8, width = 10, units = "in", res = 300)
+png(paste0("./Output/Analysis_Ready/final_treeless_v2.png"), height = 8, width = 10, units = "in", res = 300)
 final
 dev.off()
 

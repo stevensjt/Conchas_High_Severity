@@ -18,10 +18,9 @@ library(viridisLite) #version 0.3.0 for magma()
 ####1. Read Data####
 #lc <- read_sf("./SpatialOutput/", layer = "lc_clean_cut") #"Las Conchas" only sim
 #lc <- read_sf("./SpatialOutput/", layer = "all_clean_cut") #"all fires" sim
-lc <- read_sf("./SpatialOutput/", layer = "treeless_clean_cut") #"treeless" sim
+lc <- read_sf("./SpatialOutput/", layer = "lc_clean_cut") #"treeless" sim
 #lc_raw <- read_sf("./SpatialInput/4.Spatial_Scenarios/", layer = "lc_raw")
 perim <- read_sf("../../../GIS/Fires/Las Conchas/Perimeter/", layer="Las_Conchas_Perim")
-#perim_sp <- readOGR("../../../GIS/Fires/Las Conchas/Perimeter/", layer="Las_Conchas_Perim") #Need to access projection. deprecated?
 scars <- read_sf("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fs_in_las_conchas")
 
 
@@ -47,17 +46,19 @@ df_list <- list()
 #Best "lc" combo with the cutoffs method is 0.6/0.6/10, USING THIS ONE FOR SUBMISSION
 #Best "all" combo with the cutoffs method is 0.6/0.6/10, USING THIS ONE FOR SUBMISSION
 #Best "treeless" combo with the cutoffs method is 
-pct <- 7
-nugget <- 0.3
-magvar <- 10
+pct <- 0.25
+nugget <- 5
+magvar <- 50
+#cutoffs: Original option is to set cutoff at ~prop_hs
+#cutoffs = (1-(prop_hs + 0.02)) #everything above the threshold is "in"
 #cutoffs: If nugget >0, set cutoff #2 to ~10% over the minimum needed
-#0.354/0.6/0.6/10: c(0.01, 0.14, 0.75)
-#0.428/0.6/0.6/10: c(0.01, 0.18, 0.71)
-#0.655/0.6/0.6/10: c(0.1, 0.18,0.50) 
-#0.655/1,5/0/10: c(0.2, 0.18,0.50) 
-#0.655/7/1/10: c(0.1, 0.19,0.50) 
-#0.655/7/0.2,0.3/10: c(0.2, 0.18,0.50) 
-cutoffs <- c(0.02,0.18,0.50) #needs to be defined outside of function below to work properly.
+#0.354/0.6/0.6/10: c(0.01, 0.14, 0.75) *using for "lc"
+#0.428/0.6/0.6/10: c(0.01, 0.18, 0.71) *using for "all"
+#0.655/0.6/0.6/10: c(0.01, 0.18,0.50) 
+#0.655/1,5/0/10: c(0.02, 0.18,0.50) 
+#0.655/7/1/10: c(0.01, 0.19,0.50) 
+#0.655/7/0.2,0.3/10: c(0.02, 0.18,0.50) *using 0.3 for "treeless"
+cutoffs <- c(0.01,0.14,0.75) #needs to be defined outside of function below to work properly.
 parms_text <- paste0("pct_", pct,"_nug_",nugget,"_mv_",magvar)
 
 #Run one to check it out
@@ -100,7 +101,7 @@ parms_list <- sub("\\.c.*", "", csv_list)
 
 for(parms_text in parms_list){
 #if doing manually: 
-#parms_text <- parms_list[4]
+#parms_text <- parms_list[2]
 df_compare <- read.csv(paste0("./Output/Tuning_Sims/treeless/Theta1/", parms_text, ".csv"))
 sims_list_spatial <- read_rds(paste0("./Output/Tuning_Sims/treeless/Theta1/", parms_text, ".rds"))
 
@@ -113,7 +114,7 @@ a <- ggplot() +
   labs(title = "Las Conchas obs high severity", fill = "patch area (ha)") + 
   theme(axis.text.x = element_text(angle = 45), legend.position = "none")
 
-b_plot <- sims_list_spatial[[3]] #pick a random simulation to plot
+b_plot <- sims_list_spatial[[1]] #pick a random simulation to plot
 b <- tryCatch( ggplot() + 
   geom_sf(data = perim, fill = NA) + 
   geom_sf(data = b_plot, aes(fill = log2(Area_ha)), col = NA) +
