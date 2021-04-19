@@ -159,6 +159,8 @@ raster_cheese_patchdist_multipart <- function(pct,nugget,magvar,prop_hs, seed, c
       } else if(length(v) == 3){ #Take the large patches from large rnorm values
         #And take smaller patches from middling rnorm values
         ifelse(between(x,v[1],v[2]) | x > v[3], 1, NA)
+        #ifelse(between(x,v[1],v[2]) , 1, ifelse( x > v[3] ,2, NA)) #option for color-coding
+        
       }
     }
     gfv <- sort(as.vector(gf.mask), decreasing = FALSE) #gfv = gaussian field vector
@@ -166,12 +168,14 @@ raster_cheese_patchdist_multipart <- function(pct,nugget,magvar,prop_hs, seed, c
       c(gfv[length(gfv) * cutoffs[1]], 
         gfv[length(gfv) * cutoffs[2]],
         gfv[length(gfv) * cutoffs[3]])
+    cutoff_vals <- cutoff_vals[!is.na(cutoff_vals)] # mod for single threshold
     
     gf.binary <- calc(gf.mask, fun = convert.range.to.binary)
-    #plot(gf.binary)
+    #plot(gf.binary, col = c("darkred", "darkblue"))
     
     #"Simplify" raster by removing holes and crumbs < 1 ha
     gf.simple <- raster_holes_and_crumbs(gf.binary) #Now takes < 10 seconds
+    #plot(gf.simple)
     
     area_sim <- # number of cells = 1, times area of a cell 900.5704 m2 
       freq(gf.simple, value = 1) * 900.5704 #in m2
