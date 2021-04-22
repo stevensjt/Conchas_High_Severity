@@ -1,12 +1,114 @@
-#4_Study_Simulations#
+#Author: Jens Stevens; stevensjt@gmail.com
+#This code looks at the intersection of fire scars and clusters with real and simulated data
+
+
+####0. Libraries####
+source("./Code/Official/0_Functions.R") #read in customized functions necessary for processing.
+source("./Code/Official/0_RasterFunctions.R") #read in customized raster functions necessary for processing.
+library(sf)
+library(tidyverse)
 
 ####1. Read Data####
 scars <- read_sf("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fs_in_las_conchas")
 clusters <- read_sf("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fire_scar_clusters")
-lc <- read_sf("./SpatialOutput/", layer = "treeless_clean_cut")
-scenario <- "treeless"
+#lc <- read_sf("./SpatialOutput/", layer = "treeless_clean_cut")
+#scenario <- "treeless"
 
-####2. Iterate simulation of choice####
+
+####2. Study observed patterns first####
+##2a. Spatial Layers
+hsm1_single_raw <- #high severity model 1, Las Conchas severity only, unprocessed
+  read_sf("./SpatialInput/4.Spatial_Scenarios", layer = "lc_raw")
+hsm1_single_cleancut <- #high severity model 1, Las Conchas severity only, processed (removed holes+crumbs)
+  read_sf("./SpatialOutput/", layer = "lc_clean_cut")
+hsm2_single_raw <- #high severity model 2, all fires since '84, unprocessed
+  read_sf("./SpatialInput/4.Spatial_Scenarios", layer = "all_raw")
+hsm2_single_cleancut <- #high severity model 2, all fires since '84, processed
+  read_sf("./SpatialOutput/", layer = "all_clean_cut")
+hsm3_single_raw <- #high severity model 3, treeless area, unprocessed
+  read_sf("./SpatialInput/4.Spatial_Scenarios", layer = "treeless_raw")
+hsm3_single_cleancut <- #high severity model 3, treeless area, processed
+  read_sf("./SpatialOutput/", layer = "treeless_clean_cut")
+hs_models <- rbind(hsm1_single_raw,hsm2_single_raw,hsm3_single_raw)
+
+fire_name_table <- #Get fire names as part of Fire_Atlas shapefile
+  read_sf("./SpatialInput/1.Fire_Atlas", layer = "fires_that_intersect_LC") %>%
+  st_transform(crs = st_crs(hsm1_single_cleancut)) %>%
+  filter(Fire_Name %in% c("LAS CONCHAS", "CERRO GRANDE", "OSO", "DOME")) %>%
+  select(Fire_Name, Year, geometry) %>%
+  arrange(desc(Year)) %>%
+  add_row(Fire_Name = "Cerro overlap", .before = 3) %>%
+  add_row(Fire_Name = "Oso overlap", .before = 5) %>%
+  add_row(Fire_Name = "Dome overlap", .before = 7) 
+
+fire_name_table$geometry[3] <- #Intersect Cerro Grande with Las Conchas
+  st_geometry(st_intersection(fire_name_table[1,],fire_name_table[2,]))
+fire_name_table$geometry[5] <- #Intersect Oso with Las Conchas
+  st_geometry(st_intersection(fire_name_table[1,],fire_name_table[4,]))
+fire_name_table$geometry[7] <- #Intersect Dome with Las Conchas
+  st_geometry(st_intersection(fire_name_table[1,],fire_name_table[6,]))
+
+##2b. Statistical calculations for individual fires and overlap (Table 1)
+fire_stats <- #initialize area table
+  tibble(Fire = c("Las Conchas", "Cerro Grande","Cerro overlap", 
+                  "Oso", "Oso overlap", "Dome", "Dome overlap"),
+         Year = c("2011", "2000","", "1998","", "1996",""),
+         Area = NA, Area_HS = NA, Prop_HS = NA)
+
+fire_stats$Area <- #add fire perimeter area
+  fire_name_table %>%
+  st_area %>%
+  units::set_units(ha) %>%
+  as.vector %>%
+  round(0)
+
+fire_stats$Area_HS[1] <- #Las Conchas high severity area
+  hsm1_single_raw %>%
+  st_area %>% units::set_units(ha) %>% as.vector %>% round(0)
+fire_stats$Area_HS[2] <- #Cerro Grande high severity area
+  read_sf("../../../GIS/Fires/Parks Layers For Swiss Cheese/Vector", layer = "CERRO GRANDE") %>%
+  st_area %>% units::set_units(ha) %>% as.vector %>% sum %>% round(0) 
+fire_stats$Area_HS[3] <- #Cerro overlap high severity area
+  read_sf("./SpatialInput/3.CBI_Vector_OtherHS", layer = "CERRO GRANDE") %>%
+  st_area %>% units::set_units(ha) %>% as.vector %>% sum %>% round(0) 
+fire_stats$Area_HS[4] <- #Cerro Grande high severity area
+  read_sf("../../../GIS/Fires/Parks Layers For Swiss Cheese/Vector", layer = "OSO") %>%
+  st_area %>% units::set_units(ha) %>% as.vector %>% sum %>% round(0) 
+fire_stats$Area_HS[5] <- #Cerro overlap high severity area
+  read_sf("./SpatialInput/3.CBI_Vector_OtherHS", layer = "OSO") %>%
+  st_area %>% units::set_units(ha) %>% as.vector %>% sum %>% round(0) 
+fire_stats$Area_HS[6] <- #Cerro Grande high severity area
+  read_sf("../../../GIS/Fires/Parks Layers For Swiss Cheese/Vector", layer = "DOME") %>%
+  st_area %>% units::set_units(ha) %>% as.vector %>% sum %>% round(0) 
+fire_stats$Area_HS[7] <- #Cerro overlap high severity area
+  read_sf("./SpatialInput/3.CBI_Vector_OtherHS", layer = "DOME") %>%
+  st_area %>% units::set_units(ha) %>% as.vector %>% sum %>% round(0) 
+
+fire_stats$Prop_HS <- round(fire_stats$Area_HS / fire_stats$Area, 2)
+write_csv(fire_stats,"./Tables/table1_firestats.csv")
+
+##2c. Model stats (independent of simulations; precursor to Table 2)
+
+model_stats = data.frame(single = rep(NA,9), multi = NA, treeless = NA)
+rownames(model_stats) <- c("hs_area","prop_hs","prop_dead_pred","n_dead_pred", "false_mortality", "false_survival", 
+                   "classification_error", "Parameter_1", "Parameter_2")
+
+model_stats[1,c(2:4)] <- #Get area and percentage of each high severity model (hsm)
+  hs_models %>% st_area %>% units::set_units(ha) %>% as.vector %>% round(0)
+model_stats[2,c(2:4)] <- round(model_stats[1,c(2:4)] / 61057, 3)
+
+hits <- st_intersects(scars, hs_models)
+validate_hits <- scars %>% select(SampleID, cluster_id, hs_valid) 
+validate_hits$hsm1 <- 0
+validate_hits$hsm1[grep(1,tmp)] <-1
+#Start Here continue with validation work
+
+#model_stats[4,c(2:4)]  #intersection of trees and patches
+  
+  
+  
+
+####3. Iterate simulation of choice####
 #So far best combo for Las Conchas is 0.25/5/50
 #Update: 0.6/1.6/10 for lc (cutoffs 0.01, 0.14, 0.75) and all (cutoffs 0.01, 0.18, 0.71)
 #7/0.3/10 for treeless (0.02, 0.18, 0.50)
@@ -58,7 +160,7 @@ for(s in c(1:100)){
 write_csv(df_compare,paste0("./Output/Analysis_Ready/",parms_text,".csv"))
 write_rds(sims_list_spatial,paste0("./large_files/",parms_text,".rds"))
 
-####3. Assemble plot data####
+####4. Assemble plot data####
 df_compare <- read_csv("./Output/Analysis_Ready/treeless_pct_7_nug_0.3_mv_10.csv")
 sims_list_spatial <- read_rds("./large_files/treeless_pct_7_nug_0.3_mv_10.rds")
 #all_pct_0.6_nug_0.6_mv_10 [same for lc]
