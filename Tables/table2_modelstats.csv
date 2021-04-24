@@ -1,0 +1,10 @@
+,single,multi,treeless
+hs_area,21834,26265,45998
+prop_hs,0.358,0.43,0.753
+prop_dead_pred,0.267,0.355,0.622
+n_dead_pred,128,170,298
+false_mortality,10,14,65
+false_survival,123,85,8
+classification_error,0.278,0.207,0.152
+Parameter_1,NA,NA,NA
+Parameter_2,NA,NA,NA

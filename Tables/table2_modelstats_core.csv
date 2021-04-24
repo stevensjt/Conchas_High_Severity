@@ -1,0 +1,10 @@
+"","single","multi","treeless"
+"hs_area",21834,26265,45998
+"prop_hs",0.358,0.43,0.753
+"prop_dead_pred",0.3,0.408,0.667
+"n_dead_pred",117,159,260
+"false_mortality",8,12,48
+"false_survival",109,71,6
+"classification_error",0.3,0.213,0.138
+"Parameter_1",NA,NA,NA
+"Parameter_2",NA,NA,NA
