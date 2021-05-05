@@ -9,7 +9,8 @@ library(sf)
 library(tidyverse)
 
 ####1. Read Data####
-scars <- read_sf("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fs_in_las_conchas")
+#scars <- read_sf("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fs_in_las_conchas")
+scars <- read_sf("./SpatialInput/5.Fire_Scars/", layer="fs_in_las_conchas")
 clusters <- read_sf("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fire_scar_clusters")
 #lc <- read_sf("./SpatialOutput/", layer = "treeless_clean_cut")
 #scenario <- "treeless"
@@ -85,28 +86,49 @@ fire_stats$Area_HS[7] <- #Cerro overlap high severity area
   st_area %>% units::set_units(ha) %>% as.vector %>% sum %>% round(0) 
 
 fire_stats$Prop_HS <- round(fire_stats$Area_HS / fire_stats$Area, 2)
-write_csv(fire_stats,"./Tables/table1_firestats.csv")
+#write_csv(fire_stats,"./Tables/table1_firestats.csv")
 
 ##2c. Model stats (independent of simulations; precursor to Table 2)
+scars_core <- scars[scars$Dewar == "n",] #option to refine the analysis and exclude Dewar plots in Valles Caldera
 
 model_stats = data.frame(single = rep(NA,9), multi = NA, treeless = NA)
 rownames(model_stats) <- c("hs_area","prop_hs","prop_dead_pred","n_dead_pred", "false_mortality", "false_survival", 
                    "classification_error", "Parameter_1", "Parameter_2")
 
-model_stats[1,c(2:4)] <- #Get area and percentage of each high severity model (hsm)
+model_stats["hs_area",] <- #Get area and percentage of each high severity model (hsm)
   hs_models %>% st_area %>% units::set_units(ha) %>% as.vector %>% round(0)
-model_stats[2,c(2:4)] <- round(model_stats[1,c(2:4)] / 61057, 3)
+model_stats["prop_hs",] <- round(model_stats["hs_area",] / 61057, 3) #61057 (ha) is the area of Las Conchas
 
-hits <- st_intersects(scars, hs_models)
-validate_hits <- scars %>% select(SampleID, cluster_id, hs_valid) 
+hits_1 <- grep(1,st_intersects(scars_core, hs_models[1,])) #which scars intersect model 1 (single burn)
+hits_2 <- grep(1,st_intersects(scars_core, hs_models[2,])) #which scars intersect model 2 (multi burn)
+hits_3 <- grep(1,st_intersects(scars_core, hs_models[3,])) #which scars intersect model 3 (treeless)
+
+validate_hits <- scars_core %>% select(SampleID, cluster_id, hs_valid) 
 validate_hits$hsm1 <- 0
-validate_hits$hsm1[grep(1,tmp)] <-1
-#Start Here continue with validation work
+validate_hits$hsm1[hits_1] <-1
+validate_hits$hsm2 <- 0
+validate_hits$hsm2[hits_2] <-1
+validate_hits$hsm3 <- 0
+validate_hits$hsm3[hits_3] <-1
 
-#model_stats[4,c(2:4)]  #intersection of trees and patches
+hits <- as.data.frame(validate_hits)[,c("hsm1","hsm2","hsm3")]
+hits$hs_valid <- scars_core$hs_valid
+hits[,c("errors_1","errors_2","errors_3")] <-
+  hits[,c("hsm1","hsm2","hsm3")] - hits$hs_valid
+
+model_stats["n_dead_pred",] <- apply(hits[,c(1:3)], 2, sum)
+model_stats["prop_dead_pred",] <- round(model_stats["n_dead_pred",] / nrow(scars_core), 3)
+model_stats["false_mortality","single"] <- sum(hits$errors_1 == 1)
+model_stats["false_survival","single"] <- sum(hits$errors_1 == -1)
+model_stats["false_mortality","multi"] <- sum(hits$errors_2 == 1)
+model_stats["false_survival","multi"] <- sum(hits$errors_2 == -1)
+model_stats["false_mortality","treeless"] <- sum(hits$errors_3 == 1)
+model_stats["false_survival","treeless"] <- sum(hits$errors_3 == -1)
+model_stats["classification_error",] <- 
+  round(colSums(model_stats[c("false_mortality","false_survival"),])/ nrow(scars_core),3)
   
-  
-  
+#write.csv(model_stats,"./Tables/table2_modelstats_core.csv", row.names = TRUE)
+
 
 ####3. Iterate simulation of choice####
 #So far best combo for Las Conchas is 0.25/5/50
