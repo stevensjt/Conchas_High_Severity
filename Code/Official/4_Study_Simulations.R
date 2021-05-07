@@ -12,8 +12,8 @@ library(tidyverse)
 #scars <- read_sf("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fs_in_las_conchas")
 scars <- read_sf("./SpatialInput/5.Fire_Scars/", layer="fs_in_las_conchas")
 clusters <- read_sf("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fire_scar_clusters")
-#lc <- read_sf("./SpatialOutput/", layer = "treeless_clean_cut")
-#scenario <- "treeless"
+#lc <- read_sf("./SpatialOutput/", layer = "lc_clean_cut")
+#scenario <- "lc" #options "lc", "all", "treeless"
 
 
 ####2. Study observed patterns first####
@@ -132,7 +132,7 @@ model_stats["classification_error",] <-
 
 ####3. Iterate simulation of choice####
 #So far best combo for Las Conchas is 0.25/5/50
-#Update: 0.6/1.6/10 for lc (cutoffs 0.01, 0.14, 0.75) and all (cutoffs 0.01, 0.18, 0.71)
+#Update: 0.6/0.6/10 for lc (cutoffs 0.01, 0.14, 0.75) and all (cutoffs 0.01, 0.18, 0.71)
 #7/0.3/10 for treeless (0.02, 0.18, 0.50)
 pct <- 0.6
 nugget <- 0.6
@@ -183,47 +183,70 @@ write_csv(df_compare,paste0("./Output/Analysis_Ready/",parms_text,".csv"))
 write_rds(sims_list_spatial,paste0("./large_files/",parms_text,".rds"))
 
 ####4. Assemble plot data####
-df_compare <- read_csv("./Output/Analysis_Ready/treeless_pct_7_nug_0.3_mv_10.csv")
-sims_list_spatial <- read_rds("./large_files/treeless_pct_7_nug_0.3_mv_10.rds")
-#all_pct_0.6_nug_0.6_mv_10 [same for lc]
+#df_compare <- read_csv("./Output/Analysis_Ready/lc_pct_0.6_nug_0.6_mv_10.csv") #deprecated if combining scenarios
+#sims_list_spatial <- read_rds("./large_files/lc_pct_0.6_nug_0.6_mv_10.rds") #deprecated if combining scenarios
+#all_pct_0.6_nug_0.6_mv_10
+#lc_pct_0.6_nug_0.6_mv_10
 #treeless_pct_7_nug_0.3_mv_10
 
+df_lc <- read_csv("./Output/Analysis_Ready/lc_pct_0.6_nug_0.6_mv_10.csv")
+df_lc$scenario <- "lc"
+df_all <- read_csv("./Output/Analysis_Ready/all_pct_0.6_nug_0.6_mv_10.csv")
+df_all$scenario <- "all"
+df_treeless <- read_csv("./Output/Analysis_Ready/treeless_pct_7_nug_0.3_mv_10.csv")
+df_treeless$scenario <- "treeless"
+
+df_compare <- rbind(
+  df_lc,df_all,df_treeless
+)
+
+sims_list_spatial <- c(
+  read_rds("./large_files/lc_pct_0.6_nug_0.6_mv_10.rds"),
+  read_rds("./large_files/all_pct_0.6_nug_0.6_mv_10.rds"),
+  read_rds("./large_files/treeless_pct_7_nug_0.3_mv_10.rds")
+)
+
+
 df_compare$bin <- ceiling(log2(df_compare$Area_ha))
-baseline <- lc
+#baseline <- lc #deprecated?
 
 sim_comparison <- df_compare %>%
-  group_by(sim) %>%
-  summarise(prop_scars = NA, prop_patch_scars = NA, prop_patch_scars_20 = NA,
-            prop_clusters = NA, prop_cluster_scars = NA,prop_cluster_scars_20 = NA)
+  group_by(sim,scenario) %>%
+  summarise(prop_scars = NA, prop_clusters = NA) #took out patch-specific columns, may need to add other stuff later.
 
 ##CHECKME the premise is wrong here for intersecting the clusters, because a cluster can be intersected by multiple patches which artificially inflates the numbers. To solve this:
 #lc_simple_intersect <- st_make_valid(st_combine(lc)) 
 #below where lc etc are used as second term of st_intersection. Not implemented yet 2/18.
 
-for(s in c(1:100)){ #about 2 minutes (more for treeless)
+Sys.time()
+for(s in c(1:300)){ #about 2 minutes (more for treeless); 8 minutes for all datasets combined.
   sim <- st_make_valid(sims_list_spatial[[s]])
   sim <- sim[order(sim$Area_ha, decreasing = TRUE),]
   sim$sim = s
   sim$unique_patch_id = c(1:nrow(sim))
-  sim_20 <- sim[c(1:20),]
+  #sim_20 <- sim[c(1:20),] #deprecated
   scar_hits <- st_intersection(scars,sim)
-  scar_hits_20 <- st_intersection(scars,sim_20)
-  patch_scar_hits <- length(unique(scar_hits$unique_patch_id))
-  patch_scar_hits_20 <- length(unique(scar_hits_20$unique_patch_id))
-  cluster_hits <- st_intersection(clusters,sim) #CHECKME for entirely within; this just does partial intersection
-  cluster_hits_20 <- st_intersection(clusters, sim_20)
-  patch_cluster_hits <- length(unique(cluster_hits$unique_patch_id))
-  patch_cluster_hits_20 <-  length(unique(cluster_hits_20$unique_patch_id))
+  cluster_hits <- length(unique(scar_hits$cluster_id))
+  #scar_hits_20 <- st_intersection(scars,sim_20) #deprecated
+  #patch_scar_hits <- length(unique(scar_hits$unique_patch_id))
+  #patch_scar_hits_20 <- length(unique(scar_hits_20$unique_patch_id)) #deprecated
+  #cluster_hits <- st_intersection(clusters,sim) #CHECKME for entirely within; this just does partial intersection. deprecated
+  #cluster_hits_20 <- st_intersection(clusters, sim_20) #deprecated
+  #patch_cluster_hits <- length(unique(cluster_hits$unique_patch_id))
+  #patch_cluster_hits_20 <-  length(unique(cluster_hits_20$unique_patch_id)) #deprecated
   
   sim_comparison$prop_scars[s] <- nrow(scar_hits)/nrow(scars)
-  sim_comparison$prop_patch_scars[s] <- patch_scar_hits/nrow(sim)
-  sim_comparison$prop_patch_scars_20[s] <- patch_scar_hits_20/nrow(sim_20)
-  sim_comparison$prop_clusters[s] <- nrow(cluster_hits)/nrow(clusters)
-  sim_comparison$prop_patch_clusters[s] <- patch_cluster_hits/nrow(sim)
-  sim_comparison$prop_patch_clusters_20[s] <- patch_cluster_hits_20/nrow(sim_20)  
+  #sim_comparison$prop_patch_scars[s] <- patch_scar_hits/nrow(sim) #deprecated
+  #sim_comparison$prop_patch_scars_20[s] <- patch_scar_hits_20/nrow(sim_20)#deprecated
+  sim_comparison$prop_clusters[s] <- cluster_hits/nrow(clusters)
+  #sim_comparison$prop_patch_clusters[s] <- patch_cluster_hits/nrow(sim)#deprecated
+  #sim_comparison$prop_patch_clusters_20[s] <- patch_cluster_hits_20/nrow(sim_20)  #deprecated
 }
+Sys.time()
+
 
 #Actual values
+#update: pulling these from Table 2, most of this can be deprecated, start here.
 lc <- lc[order(lc$Area_ha, decreasing = TRUE),]
 lc <- st_make_valid(lc) #treeless layer has a self-intersecting problem
 lc$unique_patch_id = c(1:nrow(lc))
