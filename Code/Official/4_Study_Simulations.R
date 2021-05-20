@@ -214,9 +214,14 @@ sim_comparison <- df_compare %>%
   group_by(sim,scenario) %>%
   summarise(prop_scars = NA, prop_clusters = NA) #took out patch-specific columns, may need to add other stuff later.
 
-##CHECKME the premise is wrong here for intersecting the clusters, because a cluster can be intersected by multiple patches which artificially inflates the numbers. To solve this:
-#lc_simple_intersect <- st_make_valid(st_combine(lc)) 
-#below where lc etc are used as second term of st_intersection. Not implemented yet 2/18.
+cluster_validator <- scars %>% #How many clusters had at least one scar impacted by fire: true data
+  group_by(cluster_id) %>%
+  summarize(impacted = max(hs_valid), n_candidates = length(hs_valid)) #CHECKME change "impacted" to "true_impact"
+st_geometry(cluster_validator) <- NULL #convert to regular data frame
+#sum(cluster_validator$impacted) / length(cluster_validator$impacted) #66% true number
+#CHECKME should re-do this for the "0" rows of sim_comparison to see predicted # impacted clusters for each scenario.
+
+
 
 Sys.time()
 for(s in c(1:300)){ #about 2 minutes (more for treeless); 8 minutes for all datasets combined.
@@ -226,10 +231,29 @@ for(s in c(1:300)){ #about 2 minutes (more for treeless); 8 minutes for all data
   sim$unique_patch_id = c(1:nrow(sim))
   #sim_20 <- sim[c(1:20),] #deprecated
   scar_hits <- st_intersection(scars,sim)
-  cluster_hits <- length(unique(scar_hits$cluster_id))
+  clusters_impacted <- sort(unique(scar_hits$cluster_id))
+  cluster_hits <- length(clusters_impacted)
+  
+  clusters_heavily_impacted <- scar_hits %>%
+    group_by(cluster_id) %>%
+    summarize(n_trees_hit = length(cluster_id))
+  st_geometry(clusters_heavily_impacted) <- NULL 
+  cluster_stats <- merge(cluster_validator,clusters_heavily_impacted, all = TRUE)
+  cluster_stats$n_trees_hit[is.na(cluster_stats$n_trees_hit)] <- 0
+  cluster_stats$prop_trees_hit <-
+    cluster_stats$n_trees_hit/cluster_stats$n_candidates
+  
+  
+  #CHECKME need to add an iteration of this for interior trees only
+    
+    
   #scar_hits_20 <- st_intersection(scars,sim_20) #deprecated
   #patch_scar_hits <- length(unique(scar_hits$unique_patch_id))
   #patch_scar_hits_20 <- length(unique(scar_hits_20$unique_patch_id)) #deprecated
+    
+  ##CHECKME the premise is wrong here for intersecting the clusters, because a cluster can be intersected by multiple patches which artificially inflates the numbers. To solve this:
+  #lc_simple_intersect <- st_make_valid(st_combine(lc)) 
+  #below where lc etc are used as second term of st_intersection. Not implemented yet 2/18.
   #cluster_hits <- st_intersection(clusters,sim) #CHECKME for entirely within; this just does partial intersection. deprecated
   #cluster_hits_20 <- st_intersection(clusters, sim_20) #deprecated
   #patch_cluster_hits <- length(unique(cluster_hits$unique_patch_id))
@@ -243,6 +267,9 @@ for(s in c(1:300)){ #about 2 minutes (more for treeless); 8 minutes for all data
   #sim_comparison$prop_patch_clusters_20[s] <- patch_cluster_hits_20/nrow(sim_20)  #deprecated
 }
 Sys.time()
+
+
+
 
 
 #Actual values
@@ -271,6 +298,33 @@ observed$prop_patch_clusters_lc <- patch_cluster_hits_lc/nrow(lc)
 observed$prop_patch_clusters_20_lc <- patch_cluster_hits_20_lc/nrow(lc_20)  
 observed$prop_hs <- as.vector(round(sum(st_area(lc))/st_area(perim),3)[[1]])
 observed$observed <- "treeless"
+
+####4_new Build plots####
+#FAQ https://stats.stackexchange.com/questions/172311/r-geom-density-values-in-y-axis
+
+p1 <-
+  ggplot(sim_comparison[sim_comparison$sim!=0,]) +
+  #geom_histogram(aes(x = prop_scars, col = scenario)) +
+  #geom_freqpoly(aes(x = prop_scars, col = scenario)) +
+  geom_density(aes(x = prop_scars, col = scenario)) +
+  #geom_vline(data = observed, aes(xintercept = prop_scars_lc, lty = observed)) +
+  #scale_linetype_manual(values = "dashed") +
+  lims(x = c(0,1)) +
+  labs(x = "proportion scars \nburned at HS", y = "probability density")+
+  theme_bw() +
+  theme(legend.position = c(0.8,0.8), axis.text=element_text(size=14),
+        axis.title=element_text(size=16))
+
+p2 <-
+  ggplot(sim_comparison[sim_comparison$sim!=0,]) +
+  geom_density(aes(x = prop_clusters, col = scenario)) +
+  lims(x = c(0,1)) +
+  labs(x = "proportion clusters \nimpacted by HS", y = "probability density")+
+  theme_bw() +
+  theme(legend.position = c(0.8,0.8), axis.text=element_text(size=14),
+        axis.title=element_text(size=16))
+
+#start here need to build the rest of the plots without Dewar data, pull in actual values from Table?...
 
 ####4. Build plots####
 
