@@ -9,10 +9,11 @@ library(sf)
 library(tidyverse)
 
 ####1. Read Data####
-scars <- read_sf("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fs_in_las_conchas")
+#scars <- read_sf("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fs_in_las_conchas")
+scars <- read_sf("./SpatialInput/5.Fire_Scars/", layer="fs_in_las_conchas")
 clusters <- read_sf("../../../GIS/Fires/Las Conchas/FireScarLocations/", layer="fire_scar_clusters")
-#lc <- read_sf("./SpatialOutput/", layer = "treeless_clean_cut")
-#scenario <- "treeless"
+#lc <- read_sf("./SpatialOutput/", layer = "lc_clean_cut")
+#scenario <- "lc" #options "lc", "all", "treeless"
 
 
 ####2. Study observed patterns first####
@@ -85,32 +86,53 @@ fire_stats$Area_HS[7] <- #Cerro overlap high severity area
   st_area %>% units::set_units(ha) %>% as.vector %>% sum %>% round(0) 
 
 fire_stats$Prop_HS <- round(fire_stats$Area_HS / fire_stats$Area, 2)
-write_csv(fire_stats,"./Tables/table1_firestats.csv")
+#write_csv(fire_stats,"./Tables/table1_firestats.csv")
 
 ##2c. Model stats (independent of simulations; precursor to Table 2)
+scars_core <- scars[scars$Dewar == "n",] #option to refine the analysis and exclude Dewar plots in Valles Caldera
 
 model_stats = data.frame(single = rep(NA,9), multi = NA, treeless = NA)
 rownames(model_stats) <- c("hs_area","prop_hs","prop_dead_pred","n_dead_pred", "false_mortality", "false_survival", 
                    "classification_error", "Parameter_1", "Parameter_2")
 
-model_stats[1,c(2:4)] <- #Get area and percentage of each high severity model (hsm)
+model_stats["hs_area",] <- #Get area and percentage of each high severity model (hsm)
   hs_models %>% st_area %>% units::set_units(ha) %>% as.vector %>% round(0)
-model_stats[2,c(2:4)] <- round(model_stats[1,c(2:4)] / 61057, 3)
+model_stats["prop_hs",] <- round(model_stats["hs_area",] / 61057, 3) #61057 (ha) is the area of Las Conchas
 
-hits <- st_intersects(scars, hs_models)
-validate_hits <- scars %>% select(SampleID, cluster_id, hs_valid) 
+hits_1 <- grep(1,st_intersects(scars_core, hs_models[1,])) #which scars intersect model 1 (single burn)
+hits_2 <- grep(1,st_intersects(scars_core, hs_models[2,])) #which scars intersect model 2 (multi burn)
+hits_3 <- grep(1,st_intersects(scars_core, hs_models[3,])) #which scars intersect model 3 (treeless)
+
+validate_hits <- scars_core %>% select(SampleID, cluster_id, hs_valid) 
 validate_hits$hsm1 <- 0
-validate_hits$hsm1[grep(1,tmp)] <-1
-#Start Here continue with validation work
+validate_hits$hsm1[hits_1] <-1
+validate_hits$hsm2 <- 0
+validate_hits$hsm2[hits_2] <-1
+validate_hits$hsm3 <- 0
+validate_hits$hsm3[hits_3] <-1
 
-#model_stats[4,c(2:4)]  #intersection of trees and patches
+hits <- as.data.frame(validate_hits)[,c("hsm1","hsm2","hsm3")]
+hits$hs_valid <- scars_core$hs_valid
+hits[,c("errors_1","errors_2","errors_3")] <-
+  hits[,c("hsm1","hsm2","hsm3")] - hits$hs_valid
+
+model_stats["n_dead_pred",] <- apply(hits[,c(1:3)], 2, sum)
+model_stats["prop_dead_pred",] <- round(model_stats["n_dead_pred",] / nrow(scars_core), 3)
+model_stats["false_mortality","single"] <- sum(hits$errors_1 == 1)
+model_stats["false_survival","single"] <- sum(hits$errors_1 == -1)
+model_stats["false_mortality","multi"] <- sum(hits$errors_2 == 1)
+model_stats["false_survival","multi"] <- sum(hits$errors_2 == -1)
+model_stats["false_mortality","treeless"] <- sum(hits$errors_3 == 1)
+model_stats["false_survival","treeless"] <- sum(hits$errors_3 == -1)
+model_stats["classification_error",] <- 
+  round(colSums(model_stats[c("false_mortality","false_survival"),])/ nrow(scars_core),3)
   
-  
-  
+#write.csv(model_stats,"./Tables/table2_modelstats_core.csv", row.names = TRUE)
+
 
 ####3. Iterate simulation of choice####
 #So far best combo for Las Conchas is 0.25/5/50
-#Update: 0.6/1.6/10 for lc (cutoffs 0.01, 0.14, 0.75) and all (cutoffs 0.01, 0.18, 0.71)
+#Update: 0.6/0.6/10 for lc (cutoffs 0.01, 0.14, 0.75) and all (cutoffs 0.01, 0.18, 0.71)
 #7/0.3/10 for treeless (0.02, 0.18, 0.50)
 pct <- 0.6
 nugget <- 0.6
@@ -161,47 +183,97 @@ write_csv(df_compare,paste0("./Output/Analysis_Ready/",parms_text,".csv"))
 write_rds(sims_list_spatial,paste0("./large_files/",parms_text,".rds"))
 
 ####4. Assemble plot data####
-df_compare <- read_csv("./Output/Analysis_Ready/treeless_pct_7_nug_0.3_mv_10.csv")
-sims_list_spatial <- read_rds("./large_files/treeless_pct_7_nug_0.3_mv_10.rds")
-#all_pct_0.6_nug_0.6_mv_10 [same for lc]
+#df_compare <- read_csv("./Output/Analysis_Ready/lc_pct_0.6_nug_0.6_mv_10.csv") #deprecated if combining scenarios
+#sims_list_spatial <- read_rds("./large_files/lc_pct_0.6_nug_0.6_mv_10.rds") #deprecated if combining scenarios
+#all_pct_0.6_nug_0.6_mv_10
+#lc_pct_0.6_nug_0.6_mv_10
 #treeless_pct_7_nug_0.3_mv_10
 
+df_lc <- read_csv("./Output/Analysis_Ready/lc_pct_0.6_nug_0.6_mv_10.csv")
+df_lc$scenario <- "lc"
+df_all <- read_csv("./Output/Analysis_Ready/all_pct_0.6_nug_0.6_mv_10.csv")
+df_all$scenario <- "all"
+df_treeless <- read_csv("./Output/Analysis_Ready/treeless_pct_7_nug_0.3_mv_10.csv")
+df_treeless$scenario <- "treeless"
+
+df_compare <- rbind(
+  df_lc,df_all,df_treeless
+)
+
+sims_list_spatial <- c(
+  read_rds("./large_files/lc_pct_0.6_nug_0.6_mv_10.rds"),
+  read_rds("./large_files/all_pct_0.6_nug_0.6_mv_10.rds"),
+  read_rds("./large_files/treeless_pct_7_nug_0.3_mv_10.rds")
+)
+
+
 df_compare$bin <- ceiling(log2(df_compare$Area_ha))
-baseline <- lc
+#baseline <- lc #deprecated?
 
 sim_comparison <- df_compare %>%
-  group_by(sim) %>%
-  summarise(prop_scars = NA, prop_patch_scars = NA, prop_patch_scars_20 = NA,
-            prop_clusters = NA, prop_cluster_scars = NA,prop_cluster_scars_20 = NA)
+  group_by(sim,scenario) %>%
+  summarise(prop_scars = NA, prop_clusters = NA) #took out patch-specific columns, may need to add other stuff later.
 
-##CHECKME the premise is wrong here for intersecting the clusters, because a cluster can be intersected by multiple patches which artificially inflates the numbers. To solve this:
-#lc_simple_intersect <- st_make_valid(st_combine(lc)) 
-#below where lc etc are used as second term of st_intersection. Not implemented yet 2/18.
+cluster_validator <- scars %>% #How many clusters had at least one scar impacted by fire: true data
+  group_by(cluster_id) %>%
+  summarize(impacted = max(hs_valid), n_candidates = length(hs_valid)) #CHECKME change "impacted" to "true_impact"
+st_geometry(cluster_validator) <- NULL #convert to regular data frame
+#sum(cluster_validator$impacted) / length(cluster_validator$impacted) #66% true number
+#CHECKME should re-do this for the "0" rows of sim_comparison to see predicted # impacted clusters for each scenario.
 
-for(s in c(1:100)){ #about 2 minutes (more for treeless)
+
+
+Sys.time()
+for(s in c(1:300)){ #about 2 minutes (more for treeless); 8 minutes for all datasets combined.
   sim <- st_make_valid(sims_list_spatial[[s]])
   sim <- sim[order(sim$Area_ha, decreasing = TRUE),]
   sim$sim = s
   sim$unique_patch_id = c(1:nrow(sim))
-  sim_20 <- sim[c(1:20),]
+  #sim_20 <- sim[c(1:20),] #deprecated
   scar_hits <- st_intersection(scars,sim)
-  scar_hits_20 <- st_intersection(scars,sim_20)
-  patch_scar_hits <- length(unique(scar_hits$unique_patch_id))
-  patch_scar_hits_20 <- length(unique(scar_hits_20$unique_patch_id))
-  cluster_hits <- st_intersection(clusters,sim) #CHECKME for entirely within; this just does partial intersection
-  cluster_hits_20 <- st_intersection(clusters, sim_20)
-  patch_cluster_hits <- length(unique(cluster_hits$unique_patch_id))
-  patch_cluster_hits_20 <-  length(unique(cluster_hits_20$unique_patch_id))
+  clusters_impacted <- sort(unique(scar_hits$cluster_id))
+  cluster_hits <- length(clusters_impacted)
+  
+  clusters_heavily_impacted <- scar_hits %>%
+    group_by(cluster_id) %>%
+    summarize(n_trees_hit = length(cluster_id))
+  st_geometry(clusters_heavily_impacted) <- NULL 
+  cluster_stats <- merge(cluster_validator,clusters_heavily_impacted, all = TRUE)
+  cluster_stats$n_trees_hit[is.na(cluster_stats$n_trees_hit)] <- 0
+  cluster_stats$prop_trees_hit <-
+    cluster_stats$n_trees_hit/cluster_stats$n_candidates
+  
+  
+  #CHECKME need to add an iteration of this for interior trees only
+    
+    
+  #scar_hits_20 <- st_intersection(scars,sim_20) #deprecated
+  #patch_scar_hits <- length(unique(scar_hits$unique_patch_id))
+  #patch_scar_hits_20 <- length(unique(scar_hits_20$unique_patch_id)) #deprecated
+    
+  ##CHECKME the premise is wrong here for intersecting the clusters, because a cluster can be intersected by multiple patches which artificially inflates the numbers. To solve this:
+  #lc_simple_intersect <- st_make_valid(st_combine(lc)) 
+  #below where lc etc are used as second term of st_intersection. Not implemented yet 2/18.
+  #cluster_hits <- st_intersection(clusters,sim) #CHECKME for entirely within; this just does partial intersection. deprecated
+  #cluster_hits_20 <- st_intersection(clusters, sim_20) #deprecated
+  #patch_cluster_hits <- length(unique(cluster_hits$unique_patch_id))
+  #patch_cluster_hits_20 <-  length(unique(cluster_hits_20$unique_patch_id)) #deprecated
   
   sim_comparison$prop_scars[s] <- nrow(scar_hits)/nrow(scars)
-  sim_comparison$prop_patch_scars[s] <- patch_scar_hits/nrow(sim)
-  sim_comparison$prop_patch_scars_20[s] <- patch_scar_hits_20/nrow(sim_20)
-  sim_comparison$prop_clusters[s] <- nrow(cluster_hits)/nrow(clusters)
-  sim_comparison$prop_patch_clusters[s] <- patch_cluster_hits/nrow(sim)
-  sim_comparison$prop_patch_clusters_20[s] <- patch_cluster_hits_20/nrow(sim_20)  
+  #sim_comparison$prop_patch_scars[s] <- patch_scar_hits/nrow(sim) #deprecated
+  #sim_comparison$prop_patch_scars_20[s] <- patch_scar_hits_20/nrow(sim_20)#deprecated
+  sim_comparison$prop_clusters[s] <- cluster_hits/nrow(clusters)
+  #sim_comparison$prop_patch_clusters[s] <- patch_cluster_hits/nrow(sim)#deprecated
+  #sim_comparison$prop_patch_clusters_20[s] <- patch_cluster_hits_20/nrow(sim_20)  #deprecated
 }
+Sys.time()
+
+
+
+
 
 #Actual values
+#update: pulling these from Table 2, most of this can be deprecated, start here.
 lc <- lc[order(lc$Area_ha, decreasing = TRUE),]
 lc <- st_make_valid(lc) #treeless layer has a self-intersecting problem
 lc$unique_patch_id = c(1:nrow(lc))
@@ -226,6 +298,33 @@ observed$prop_patch_clusters_lc <- patch_cluster_hits_lc/nrow(lc)
 observed$prop_patch_clusters_20_lc <- patch_cluster_hits_20_lc/nrow(lc_20)  
 observed$prop_hs <- as.vector(round(sum(st_area(lc))/st_area(perim),3)[[1]])
 observed$observed <- "treeless"
+
+####4_new Build plots####
+#FAQ https://stats.stackexchange.com/questions/172311/r-geom-density-values-in-y-axis
+
+p1 <-
+  ggplot(sim_comparison[sim_comparison$sim!=0,]) +
+  #geom_histogram(aes(x = prop_scars, col = scenario)) +
+  #geom_freqpoly(aes(x = prop_scars, col = scenario)) +
+  geom_density(aes(x = prop_scars, col = scenario)) +
+  #geom_vline(data = observed, aes(xintercept = prop_scars_lc, lty = observed)) +
+  #scale_linetype_manual(values = "dashed") +
+  lims(x = c(0,1)) +
+  labs(x = "proportion scars \nburned at HS", y = "probability density")+
+  theme_bw() +
+  theme(legend.position = c(0.8,0.8), axis.text=element_text(size=14),
+        axis.title=element_text(size=16))
+
+p2 <-
+  ggplot(sim_comparison[sim_comparison$sim!=0,]) +
+  geom_density(aes(x = prop_clusters, col = scenario)) +
+  lims(x = c(0,1)) +
+  labs(x = "proportion clusters \nimpacted by HS", y = "probability density")+
+  theme_bw() +
+  theme(legend.position = c(0.8,0.8), axis.text=element_text(size=14),
+        axis.title=element_text(size=16))
+
+#start here need to build the rest of the plots without Dewar data, pull in actual values from Table?...
 
 ####4. Build plots####
 
